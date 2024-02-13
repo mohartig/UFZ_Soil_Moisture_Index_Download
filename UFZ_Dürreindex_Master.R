@@ -1,7 +1,7 @@
 
 #------------------------------------------------------------------#
 ## This R script automates the process of downloading and visualizing 
-## soil moisture across Germany's NUTS-3 regions, using data from the 
+## soil moisture across Germany's NUTS-2 regions, using data from the 
 ## UFZ Dürreindex (drought index). Initially, it clears the workspace 
 ## and loads necessary libraries (terra for spatial data manipulation 
 ## and ggplot2 for plotting). It sets the working directory to a 
@@ -11,13 +11,16 @@
 ## and then processes this data by setting an appropriate CRS, renaming raster 
 ## layers based on dates, and handling missing values. It calculates yearly 
 ## averages from the monthly data and associates these averages with 
-## corresponding NUTS-3 polygons, adjusting for spatial consistency. 
-## Finally, it visualizes these averaged values in maps for each year,
+## corresponding NUTS-2 polygons, adjusting for spatial consistency. 
+## It visualizes these averaged values in maps for each year,
 ## saving both the plots and the data frames with NUTS IDs and average 
 ## soil moisture values for further use. The process involves spatial 
 ## transformation, extraction of average values for polygons, and the 
 ## creation of visually maps to represent the soil moisture index over time.
-# 
+##
+## Finally, it reads and subsets FADN data for Germany, 
+## initializes UFZ_SMI, update it yearly from 2004 to 2020, then save.
+##
 ## for questions, contact: moritz.hartig@icloud.com 
 #------------------------------------------------------------------#
 
@@ -26,10 +29,10 @@ rm(list = ls())
 library("terra")
 library("ggplot2")
 
-setwd("C:/Users/hartig3/Desktop/UFZ_Soil_Moisture_Index/")
+setwd("C:/Users/hartig3/Desktop/UFZ_Soil_Moisture_Index_Download/")
 
 #------------------------------------------------------------------#
-####-------------- 1. LOAD NUTS-3 POLYGONS / OTHERS ------------####
+####-------------- 1. LOAD NUTS-2 POLYGONS / OTHERS ------------####
 #------------------------------------------------------------------#
 
 ## DO YOU NEED TO RE-DOWNLOAD THE NUTS-POLYGONS?
@@ -90,27 +93,27 @@ for (i in 1:num.years) {
 names(UFZ.SMI.Year) <- 1951:(1950 + num.years)
 
 #------------------------------------------------------------------#
-####-------------- 4. ADD THE AVERAGE VALUE TO NUTS3 -----------####
+####-------------- 4. ADD THE AVERAGE VALUE TO NUTS2 -----------####
 #------------------------------------------------------------------#
 
 for (year.UFZ in 1:dim(UFZ.SMI.Year)[3]) {
   
-  ## load NUTS 3
+  ## load NUTS 2
   years <- year.UFZ + 1950
   source("01_R_Objects/01_load_NUTS.R")
   
   ## Tranform polygon to fit crs
-  NUTS3.germany.ttransformed <- st_transform(NUTS3.germany.transformed, st_crs(UFZ.SMI.Year))
+  NUTS2.germany.ttransformed <- st_transform(NUTS2.germany.transformed, st_crs(UFZ.SMI.Year))
   
   ## Calculate the average values for each polygon
-  average_values <- terra::extract(UFZ.SMI.Year[[year.UFZ]], NUTS3.germany.ttransformed, fun = mean, na.rm = TRUE)
+  average_values <- terra::extract(UFZ.SMI.Year[[year.UFZ]], NUTS2.germany.ttransformed, fun = mean, na.rm = TRUE)
   names(average_values) <- c("ID", "UFZ_SMI")
   
-  ## Add the average values as a new column to NUTS3.germany.transformed
-  NUTS3.germany.transformed$average.raster.value <- average_values$UFZ_SMI
+  ## Add the average values as a new column to NUTS2.germany.transformed
+  NUTS2.germany.transformed$average.raster.value <- average_values$UFZ_SMI
   
   ## Create the plot with a minimal theme
-  p <- ggplot(data = NUTS3.germany.transformed) +
+  p <- ggplot(data = NUTS2.germany.transformed) +
     geom_sf(aes(fill = cut(average.raster.value, breaks = 5)), size = 0.01, show.legend = TRUE) +  # Set size for thinner borders
     scale_fill_manual(values = viridis::viridis(5), guide = guide_legend(title = "Index Value")) + # Manual scale for discrete values
     labs(title = "UFZ Soil Moisture Index") +
@@ -123,9 +126,45 @@ for (year.UFZ in 1:dim(UFZ.SMI.Year)[3]) {
          plot = p, width = 10, height = 8, units = "in")
   
   ## Combine NUTS IDs and average raster values into a single dataframe
-  data <- data.frame("NUTS_ID" = NUTS3.germany.transformed$NUTS_ID,
-                     "UFZ_SMI" = as.numeric(NUTS3.germany.transformed$average.raster.value))
+  data <- data.frame("NUTS_ID" = NUTS2.germany.transformed$NUTS_ID,
+                     "UFZ_SMI" = as.numeric(NUTS2.germany.transformed$average.raster.value))
   
   ## Save the dataframe as an RDS file at the specified location
   saveRDS(data, file = paste0("02_Data/UFZ_SMI_", (1950 + year.UFZ),".Rds"))
 }
+
+
+#------------------------------------------------------------------#
+####-------------- 5. APPEND UFZ SMI TO FADN DATA --------------####
+#------------------------------------------------------------------#
+
+## read in FADN data (adjust this as necessary)
+FADN <- readRDS("FADN.rda")
+
+## SUBSET DATAFRAME TO RELEVANT VARIABLES
+FADN.DE <- FADN %>%
+  filter(COUNTRY == "DEU", TF14 == 15)
+
+## Initialize the UFZ_SMI column in FADN.DE as a numeric column with the same number of rows as FADN.DE
+FADN.DE$UFZ_SMI <- numeric(nrow(FADN.DE))
+
+## Loop through each year from 2004 to 2020
+for (years in 2004:2020) {
+  
+  ## Read the RDS file for the given year into FADN.weather
+  FADN.weather <- readRDS(paste0("02_Data/UFZ_SMI_", years,".Rds"))
+  
+  ## Rename columns of FADN.weather to ensure consistency, setting them as "NUTS2" and "UFZ_SMI"
+  colnames(FADN.weather) <- c("NUTS2", "UFZ_SMI")
+  
+  ## Add a YEAR column to FADN.weather, assigning the current year in the loop to all rows
+  FADN.weather$YEAR <- years
+  
+  ## Update the UFZ_SMI values in FADN.DE with those from FADN.weather based on matching NUTS2 and YEAR columns
+  ## The unmatched parameter set to "ignore" ensures that only matching rows are updated and no new rows are added
+  FADN.DE <- dplyr::rows_update(FADN.DE, FADN.weather, by = c("NUTS2", "YEAR"), unmatched = "ignore")
+}
+
+## save final FADN data with UFZ SMI information
+saveRDS(FADN.DE, file = "02_Data/FADN_UFZ.rds")
+
