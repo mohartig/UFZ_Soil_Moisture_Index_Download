@@ -1,5 +1,7 @@
 This repository contains data, scripts, and graphical outputs for the UFZ Soil Moisture Index (SMI) project. The SMI is designed to monitor soil moisture levels across different geographical regions and times, providing essential insights for agricultural, hydrological, and climate research.
 
+It further matches UFZ SMI information with Farm Accountancy Data at the spatial resolution of NUTS1-3. 
+
 Folder Structure:
 
     UFZ_Dürreindex_Master.R: The main R script for analyzing soil moisture index data.
