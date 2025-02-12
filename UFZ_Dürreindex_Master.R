@@ -29,7 +29,7 @@ rm(list = ls())
 library("terra")
 library("ggplot2")
 
-setwd("C:/Users/hartig3/Desktop/UFZ_Soil_Moisture_Index_Download/")
+setwd("/UFZ_Soil_Moisture_Index_Download/")
 
 #------------------------------------------------------------------#
 ####-------------- 1. LOAD NUTS-2 POLYGONS / OTHERS ------------####
